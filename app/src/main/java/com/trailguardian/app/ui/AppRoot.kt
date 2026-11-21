@@ -361,7 +361,7 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
         offlineRequest = OfflineEntryRequest(
             key = System.currentTimeMillis(),
             startPicker = true,
-            points = workspaceFocusPoints(workspace),
+            points = offlineFocusPoints(workspace, displayPosition?.let { GeoPoint(it.lat, it.lng) }),
             initialSelection = existing?.points ?: emptyList(),
             initialName = existing?.name ?: "",
             initialZooms = existing?.zooms,
@@ -379,7 +379,10 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
         offlineRequest = OfflineEntryRequest(
             key = System.currentTimeMillis(),
             startPicker = false,
-            points = activeWorkspace?.let(::workspaceFocusPoints) ?: emptyList(),
+            points = offlineFocusPoints(
+                activeWorkspace,
+                displayPosition?.let { GeoPoint(it.lat, it.lng) },
+            ),
             suggestedName = activeWorkspace?.name,
             sourceId = viewModel.mapSourceId.value,
         )
@@ -613,7 +616,10 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
             onDismiss = { poiAnchor = null },
             onSave = { type, name, description ->
                 poiAnchor = null
-                viewModel.addPoi(type, name, description, anchor)
+                viewModel.addPoi(type, name, description, anchor) { poi ->
+                    pendingPoiFocus = poi
+                    currentTab = Tab.MAP
+                }
             },
         )
     }
@@ -1089,10 +1095,13 @@ private fun poiFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedLabelColor = TrailColors.TextMuted,
 )
 
-private fun workspaceFocusPoints(workspace: Workspace): List<GeoPoint> {
-    workspace.targetTrack?.points?.takeIf { it.isNotEmpty() }?.let { return it }
-    workspace.recordedTrack?.points?.takeIf { it.isNotEmpty() }?.let { return it }
-    return workspace.pois.map { GeoPoint(it.lat, it.lng) }
+private fun offlineFocusPoints(
+    workspace: Workspace?,
+    livePoint: GeoPoint?,
+): List<GeoPoint> {
+    val target = workspace?.targetTrack?.points.orEmpty()
+    if (target.isNotEmpty()) return target
+    return listOfNotNull(livePoint)
 }
 
 private fun queryFileName(context: android.content.Context, uri: Uri): String? {

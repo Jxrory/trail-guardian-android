@@ -1,6 +1,6 @@
 package com.trailguardian.feature.map
 
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -232,9 +232,10 @@ fun MapScreen(
             Box(
                 modifier = Modifier
                     .offset {
+                        val half = 32.dp.roundToPx()
                         IntOffset(
-                            (userScreen.x - 32).roundToInt(),
-                            (userScreen.y - 32).roundToInt(),
+                            (userScreen.x - half).roundToInt(),
+                            (userScreen.y - half).roundToInt(),
                         )
                     }
                     .size(64.dp),
@@ -577,25 +578,30 @@ private fun UserCompass(
     val hasHeading = heading != null && !heading.isNaN()
     val transition = rememberInfiniteTransition(label = "compassPulse")
     val pulse by transition.animateFloat(
-        initialValue = 0.55f,
+        initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = LinearEasing),
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "pulse",
     )
     Box(modifier = modifier.size(64.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val radius = size.minDimension / 2f
+            val ringRadius = 22.dp.toPx()
             drawCircle(
-                color = TrailColors.Emerald.copy(alpha = 0.12f * (1f - pulse)),
-                radius = radius * (0.75f + 0.25f * pulse),
+                color = TrailColors.Rose.copy(alpha = 0.55f * (1f - pulse)),
+                radius = ringRadius * (0.6f + 0.85f * pulse),
+                style = Stroke(width = 2.dp.toPx()),
             )
             drawCircle(
-                color = TrailColors.TextSecondary.copy(alpha = 0.45f),
-                radius = radius - 2.dp.toPx(),
-                style = Stroke(width = 1.5.dp.toPx()),
+                color = Color(0xFF0F172A).copy(alpha = 0.35f),
+                radius = ringRadius,
+            )
+            drawCircle(
+                color = TrailColors.TextSecondary.copy(alpha = 0.58f),
+                radius = ringRadius,
+                style = Stroke(width = 1.dp.toPx()),
             )
         }
         Text(
@@ -603,7 +609,7 @@ private fun UserCompass(
             color = TrailColors.TextSecondary,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp),
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = (-9).dp),
         )
         Canvas(
             modifier = Modifier
@@ -612,21 +618,26 @@ private fun UserCompass(
         ) {
             val path = Path()
             val center = Offset(size.width / 2f, size.height / 2f)
-            path.moveTo(center.x, center.y - size.height * 0.30f)
-            path.lineTo(center.x - size.width * 0.10f, center.y - size.height * 0.02f)
-            path.lineTo(center.x + size.width * 0.10f, center.y - size.height * 0.02f)
+            val halfWidth = 4.dp.toPx()
+            val tipY = center.y - 20.dp.toPx()
+            val notchY = center.y - 4.6.dp.toPx()
+            path.moveTo(center.x, tipY)
+            path.lineTo(center.x + halfWidth, center.y)
+            path.lineTo(center.x, notchY)
+            path.lineTo(center.x - halfWidth, center.y)
             path.close()
             drawPath(
                 path = path,
-                color = TrailColors.EmeraldBright.copy(
+                color = TrailColors.Rose.copy(
                     alpha = if (hasHeading && hasPosition) 0.95f else 0.35f,
                 ),
             )
         }
         Box(
             modifier = Modifier
-                .size(8.dp)
-                .background(TrailColors.Emerald, RoundedCornerShape(50)),
+                .size(10.dp)
+                .border(2.dp, Color.White, RoundedCornerShape(50))
+                .background(TrailColors.Rose, RoundedCornerShape(50)),
         )
     }
 }

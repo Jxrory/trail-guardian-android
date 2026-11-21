@@ -175,14 +175,6 @@ class TrailMapController(
         setGeoJson("recorded", if (data.recordedPoints.size > 1) MapStyle.lineGeoJson(data.recordedPoints) else MapStyle.lineGeoJson(emptyList()))
         setGeoJson("recordedEndpoints", MapStyle.endpointsGeoJson(data.recordedPoints, "#10B981"))
         setGeoJson("pois", MapStyle.poiGeoJson(data.pois))
-        setGeoJson(
-            "accuracy",
-            MapStyle.accuracyGeoJson(
-                data.position?.lat,
-                data.position?.lng,
-                data.position?.accuracy,
-            ),
-        )
         updateUserScreen()
     }
 

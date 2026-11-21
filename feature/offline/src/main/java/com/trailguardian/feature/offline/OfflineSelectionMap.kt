@@ -267,6 +267,10 @@ class OfflineSelectionController(
     private fun lineGeoJson(points: List<GeoPoint>): String {
         val coordinates = JSONArray()
         points.forEach { coordinates.put(JSONArray().put(it.lng).put(it.lat)) }
+        if (points.size >= 3) {
+            val first = points.first()
+            coordinates.put(JSONArray().put(first.lng).put(first.lat))
+        }
         val feature = JSONObject().apply {
             put("type", "Feature")
             put(
@@ -430,8 +434,14 @@ class OfflineSelectionController(
         }
 
         private fun emptyGeoJson(): JSONObject = JSONObject().apply {
-            put("type", "FeatureCollection")
-            put("features", JSONArray())
+            put("type", "geojson")
+            put(
+                "data",
+                JSONObject().apply {
+                    put("type", "FeatureCollection")
+                    put("features", JSONArray())
+                },
+            )
         }
     }
 }

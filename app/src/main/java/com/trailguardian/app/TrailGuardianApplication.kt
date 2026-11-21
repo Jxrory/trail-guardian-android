@@ -6,6 +6,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.trailguardian.app.di.AppContainer
 import com.trailguardian.service.recording.RecordingEngineProvider
+import org.maplibre.android.MapLibre
+import org.maplibre.android.WellKnownTileServer
 
 class TrailGuardianApplication : Application() {
     lateinit var container: AppContainer
@@ -13,6 +15,7 @@ class TrailGuardianApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        MapLibre.getInstance(this, null, WellKnownTileServer.MapLibre)
         container = AppContainer(this)
         RecordingEngineProvider.instance = container.recordingEngine
         container.tileServer.start()

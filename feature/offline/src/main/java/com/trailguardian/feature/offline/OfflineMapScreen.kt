@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,6 +105,7 @@ fun OfflineMapScreen(
         mode = if (current.startPicker) OfflineMode.SELECT else OfflineMode.LIST
     }
 
+    val currentSelection by rememberUpdatedState(selection)
     val bounds = remember(selection) { GeoUtils.boundsFromPoints(selection) }
     val plan = remember(bounds, selectedZooms, includeContour, source) {
         OfflinePlanner.createOfflinePlan(bounds, selectedZooms, source, includeContour)
@@ -133,7 +135,7 @@ fun OfflineMapScreen(
                         tileBaseUrl = tileBaseUrl,
                         focusPoints = request?.points.orEmpty(),
                         selection = selection,
-                        onPick = { point -> selection = selection + point },
+                        onPick = { point -> selection = currentSelection + point },
                     )
                     Box(
                         modifier = Modifier

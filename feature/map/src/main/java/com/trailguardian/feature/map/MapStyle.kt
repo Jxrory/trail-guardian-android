@@ -1,6 +1,5 @@
 package com.trailguardian.feature.map
 
-import com.trailguardian.core.geo.GeoUtils
 import com.trailguardian.core.model.GeoPoint
 import com.trailguardian.core.model.Poi
 import com.trailguardian.core.model.PoiType
@@ -39,7 +38,6 @@ object MapStyle {
         sources.put("recorded", emptyGeoJson())
         sources.put("recordedEndpoints", emptyGeoJson())
         sources.put("pois", emptyGeoJson())
-        sources.put("accuracy", emptyGeoJson())
 
         val layers = JSONArray()
         layers.put(
@@ -172,34 +170,6 @@ object MapStyle {
                 )
             },
         )
-        layers.put(
-            JSONObject().apply {
-                put("id", "accuracy-fill")
-                put("type", "fill")
-                put("source", "accuracy")
-                put(
-                    "paint",
-                    JSONObject()
-                        .put("fill-color", "#10B981")
-                        .put("fill-opacity", 0.12),
-                )
-            },
-        )
-        layers.put(
-            JSONObject().apply {
-                put("id", "accuracy-line")
-                put("type", "line")
-                put("source", "accuracy")
-                put(
-                    "paint",
-                    JSONObject()
-                        .put("line-color", "#10B981")
-                        .put("line-width", 1)
-                        .put("line-opacity", 0.4),
-                )
-            },
-        )
-
         return JSONObject().apply {
             put("version", 8)
             put("name", "TrailGuardian")
@@ -219,8 +189,14 @@ object MapStyle {
         }
 
     private fun emptyGeoJson(): JSONObject = JSONObject().apply {
-        put("type", "FeatureCollection")
-        put("features", JSONArray())
+        put("type", "geojson")
+        put(
+            "data",
+            JSONObject().apply {
+                put("type", "FeatureCollection")
+                put("features", JSONArray())
+            },
+        )
     }
 
     fun lineGeoJson(points: List<GeoPoint>): String {
@@ -296,27 +272,6 @@ object MapStyle {
             }
         }
         return featureCollection(features)
-    }
-
-    fun accuracyGeoJson(lat: Double?, lng: Double?, accuracy: Float?): String {
-        if (lat == null || lng == null) return featureCollection(emptyList())
-        val radius = (accuracy?.toDouble() ?: 20.0).coerceAtMost(200.0)
-        val ring = GeoUtils.circlePolygon(lat, lng, radius)
-        val coordinates = JSONArray()
-        ring.forEach { point ->
-            coordinates.put(JSONArray().put(point.lng).put(point.lat))
-        }
-        val feature = JSONObject().apply {
-            put("type", "Feature")
-            put(
-                "geometry",
-                JSONObject().apply {
-                    put("type", "Polygon")
-                    put("coordinates", JSONArray().put(coordinates))
-                },
-            )
-        }
-        return featureCollection(listOf(feature))
     }
 
     private fun featureCollection(features: List<JSONObject>): String =

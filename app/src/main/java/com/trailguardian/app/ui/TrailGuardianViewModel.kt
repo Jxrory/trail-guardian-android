@@ -196,7 +196,7 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
         viewModelScope.launch {
             combine(activeWorkspaceId, workspaces) { id, list -> id to list }
                 .collect { (id, list) ->
-                    if (id != null && list.none { it.id == id }) {
+                    if (id != null && list.isNotEmpty() && list.none { it.id == id }) {
                         settings.setActiveWorkspaceId(null)
                     }
                 }
@@ -288,18 +288,23 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun addPoi(type: PoiType, name: String, description: String, anchor: GeoPoint) {
+    fun addPoi(
+        type: PoiType,
+        name: String,
+        description: String,
+        anchor: GeoPoint,
+        onSaved: (Poi) -> Unit = {},
+    ) {
         val workspace = activeWorkspace.value
         if (workspace == null) {
             showToast("请先加载工作空间", ToastType.ERROR)
             return
         }
         viewModelScope.launch {
-            workspaceRepository.addPoi(
-                workspace.id,
-                Poi.manual(type, name, description, anchor.lat, anchor.lng),
-            )
+            val poi = Poi.manual(type, name, description, anchor.lat, anchor.lng)
+            workspaceRepository.addPoi(workspace.id, poi)
             showToast("标注点位已保存", ToastType.SUCCESS)
+            onSaved(poi)
         }
     }
 
