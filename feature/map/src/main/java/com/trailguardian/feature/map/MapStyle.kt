@@ -200,6 +200,7 @@ object MapStyle {
     }
 
     fun lineGeoJson(points: List<GeoPoint>): String {
+        if (points.size < 2) return featureCollection(emptyList())
         val coordinates = JSONArray()
         points.forEach { point ->
             coordinates.put(JSONArray().put(point.lng).put(point.lat))

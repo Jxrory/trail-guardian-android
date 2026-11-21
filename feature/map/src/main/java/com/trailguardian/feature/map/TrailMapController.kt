@@ -170,9 +170,9 @@ class TrailMapController(
 
     private fun syncData(data: MapData) {
         val map = map ?: return
-        setGeoJson("target", if (data.targetPoints.size > 1) MapStyle.lineGeoJson(data.targetPoints) else MapStyle.lineGeoJson(emptyList()))
+        setGeoJson("target", MapStyle.lineGeoJson(data.targetPoints))
         setGeoJson("targetEndpoints", MapStyle.endpointsGeoJson(data.targetPoints, "#38BDF8"))
-        setGeoJson("recorded", if (data.recordedPoints.size > 1) MapStyle.lineGeoJson(data.recordedPoints) else MapStyle.lineGeoJson(emptyList()))
+        setGeoJson("recorded", MapStyle.lineGeoJson(data.recordedPoints))
         setGeoJson("recordedEndpoints", MapStyle.endpointsGeoJson(data.recordedPoints, "#10B981"))
         setGeoJson("pois", MapStyle.poiGeoJson(data.pois))
         updateUserScreen()

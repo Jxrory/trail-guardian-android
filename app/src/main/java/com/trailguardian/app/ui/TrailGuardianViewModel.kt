@@ -471,6 +471,9 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
             accuracy = if (location.hasAccuracy()) location.accuracy else null,
             lastUpdate = now,
         )
+        if (engine.state.value.isRecording) {
+            engine.handleLocation(location)
+        }
     }
 
     private suspend fun checkPendingRestore() {
