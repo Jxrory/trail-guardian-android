@@ -1,13 +1,18 @@
 package com.trailguardian.app.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.AnchoredDraggableState
+import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.anchoredDraggable
+import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,13 +34,16 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -52,6 +60,7 @@ import com.trailguardian.core.ui.Badge
 import com.trailguardian.core.ui.TrailColors
 import com.trailguardian.service.recording.RecordingState
 import java.util.Locale
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class MapRecordPanelLevel {
@@ -60,6 +69,7 @@ private enum class MapRecordPanelLevel {
     DETAILS,
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun MapRecordingPanel(
     workspace: Workspace?,
@@ -76,36 +86,62 @@ internal fun MapRecordingPanel(
     var level by rememberSaveable(workspace?.id) {
         mutableStateOf(MapRecordPanelLevel.OVERVIEW)
     }
-    var dragHeight by remember { mutableStateOf<Dp?>(null) }
-    var dragStartHeight by remember { mutableStateOf<Dp?>(null) }
-
-    BackHandler(enabled = workspace != null && level != MapRecordPanelLevel.OVERVIEW) {
-        level = MapRecordPanelLevel.OVERVIEW
-    }
-
     val availableHeight = maxAvailableHeight.coerceAtLeast(140.dp)
     val overviewHeight = minOf(118.dp, availableHeight * 0.32f)
     val controlsHeight = minOf(216.dp, availableHeight * 0.55f)
-    val detailsHeight = minOf(330.dp, availableHeight * 0.75f).coerceAtLeast(controlsHeight)
+    val detailsHeight = minOf(310.dp, availableHeight * 0.72f).coerceAtLeast(controlsHeight)
     val heights = listOf(overviewHeight, controlsHeight, detailsHeight)
-    val animatedHeight by animateDpAsState(
-        targetValue = heights[level.ordinal],
-        animationSpec = tween(durationMillis = 220),
-    )
-    val displayedHeight = dragHeight ?: animatedHeight
     val density = LocalDensity.current
-    val dragState = rememberDraggableState { delta ->
-        val current = dragHeight ?: displayedHeight
-        dragHeight = (current - with(density) { delta.toDp() }).coerceIn(
-            minimumValue = overviewHeight,
-            maximumValue = detailsHeight,
+    val anchors = remember(overviewHeight, controlsHeight, detailsHeight, density) {
+        DraggableAnchors {
+            MapRecordPanelLevel.OVERVIEW at -with(density) { overviewHeight.toPx() }
+            MapRecordPanelLevel.CONTROLS at -with(density) { controlsHeight.toPx() }
+            MapRecordPanelLevel.DETAILS at -with(density) { detailsHeight.toPx() }
+        }
+    }
+    val dragState = remember(workspace?.id) {
+        AnchoredDraggableState(
+            initialValue = level,
+            positionalThreshold = { distance -> distance * 0.32f },
+            velocityThreshold = { with(density) { 180.dp.toPx() } },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow,
+                visibilityThreshold = 0.5f,
+            ),
+            confirmValueChange = { true },
         )
     }
-    val effectiveHeight = if (workspace == null) minOf(88.dp, availableHeight) else displayedHeight
-
-    fun moveOneLevel(direction: Int) {
-        level = MapRecordPanelLevel.entries[(level.ordinal + direction).coerceIn(0, 2)]
+    LaunchedEffect(anchors, workspace?.id) {
+        dragState.updateAnchors(anchors, dragState.currentValue)
     }
+    LaunchedEffect(dragState.currentValue) {
+        level = dragState.currentValue
+    }
+
+    val dragOffset = dragState.offset
+    val displayedHeight = if (dragOffset.isNaN()) {
+        heights[level.ordinal]
+    } else {
+        with(density) { (-dragOffset).toDp() }.coerceIn(overviewHeight, detailsHeight)
+    }
+    val revealedLevel = when {
+        displayedHeight >= detailsHeight - 4.dp -> MapRecordPanelLevel.DETAILS
+        displayedHeight >= controlsHeight - 4.dp -> MapRecordPanelLevel.CONTROLS
+        else -> MapRecordPanelLevel.OVERVIEW
+    }
+    val controlsAlpha by animateFloatAsState(
+        targetValue = if (revealedLevel.ordinal >= MapRecordPanelLevel.CONTROLS.ordinal) 1f else 0f,
+        animationSpec = tween(durationMillis = revealedLevel.ordinal * 120),
+        label = "controlsAlpha",
+    )
+
+    val coroutineScope = rememberCoroutineScope()
+    BackHandler(enabled = workspace != null && revealedLevel != MapRecordPanelLevel.OVERVIEW) {
+        coroutineScope.launch { dragState.animateTo(MapRecordPanelLevel.OVERVIEW) }
+    }
+
+    val effectiveHeight = if (workspace == null) minOf(88.dp, availableHeight) else displayedHeight
 
     Box(
         modifier = modifier
@@ -134,53 +170,40 @@ internal fun MapRecordingPanel(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .draggable(
-                    state = dragState,
-                    orientation = Orientation.Vertical,
-                    onDragStarted = {
-                        dragStartHeight = animatedHeight
-                        dragHeight = animatedHeight
-                    },
-                    onDragStopped = { velocity ->
-                        val start = dragStartHeight ?: displayedHeight
-                        val end = dragHeight ?: displayedHeight
-                        val movedUp = end - start < -24.dp || velocity < -500f
-                        val movedDown = end - start > 24.dp || velocity > 500f
-                        when {
-                            movedUp && level != MapRecordPanelLevel.DETAILS -> moveOneLevel(1)
-                            movedDown && level != MapRecordPanelLevel.OVERVIEW -> moveOneLevel(-1)
-                        }
-                        dragStartHeight = null
-                        dragHeight = null
-                    },
-                )
+                .anchoredDraggable(dragState, Orientation.Vertical)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             DragHandle()
             Spacer(Modifier.height(2.dp))
             CoreMetrics(workspace, recording)
 
-            if (level != MapRecordPanelLevel.OVERVIEW) {
-                Spacer(Modifier.height(8.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(TrailColors.Border.copy(alpha = 0.7f)),
-                )
-                Spacer(Modifier.height(8.dp))
-                RecordingStatus(workspace, recording)
-
-                if (level == MapRecordPanelLevel.DETAILS) {
+            if (revealedLevel != MapRecordPanelLevel.OVERVIEW) {
+                Column(Modifier.alpha(controlsAlpha)) {
                     Spacer(Modifier.height(8.dp))
-                    DetailMetrics(workspace, recording, currentElevation, gpsState)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(TrailColors.Border.copy(alpha = 0.7f)),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    RecordingStatus(workspace, recording)
+                }
+
+                if (revealedLevel == MapRecordPanelLevel.DETAILS) {
+                    Column(Modifier.alpha(controlsAlpha)) {
+                        Spacer(Modifier.height(8.dp))
+                        DetailMetrics(workspace, recording, currentElevation, gpsState)
+                    }
                 }
             }
 
             Spacer(Modifier.weight(1f))
-            if (level != MapRecordPanelLevel.OVERVIEW) {
+            if (revealedLevel != MapRecordPanelLevel.OVERVIEW) {
                 Spacer(Modifier.height(8.dp))
-                RecordingActions(recording, onStart, onPause, onFinish)
+                Box(Modifier.alpha(controlsAlpha)) {
+                    RecordingActions(recording, onStart, onPause, onFinish)
+                }
             }
         }
     }
