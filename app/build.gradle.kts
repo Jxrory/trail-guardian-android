@@ -50,6 +50,7 @@ dependencies {
     implementation(project(":feature:history"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:offline"))
+    implementation(project(":feature:tools"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.1")

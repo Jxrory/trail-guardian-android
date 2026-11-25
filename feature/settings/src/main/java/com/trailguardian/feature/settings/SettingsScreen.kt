@@ -2,13 +2,14 @@ package com.trailguardian.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -18,8 +19,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -30,12 +34,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.trailguardian.core.geo.GeoUtils
 import com.trailguardian.core.ui.Badge
-import com.trailguardian.core.ui.KeyValueRow
 import com.trailguardian.core.ui.SectionLabel
 import com.trailguardian.core.ui.TrailColors
 
@@ -50,6 +54,9 @@ fun SettingsScreen(
     cacheCount: Int,
     cacheSizeBytes: Long,
     versionName: String,
+    onOpenCoordinateConverter: () -> Unit,
+    onOpenPaceCalculator: () -> Unit,
+    onOpenCompassTool: () -> Unit,
     onOpenOfflineMaps: () -> Unit,
     onRequestBackgroundLocation: () -> Unit,
     onOpenBatterySettings: () -> Unit,
@@ -158,37 +165,39 @@ fun SettingsScreen(
             }
         }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(TrailColors.Panel.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
-                .border(1.dp, TrailColors.Border, RoundedCornerShape(16.dp))
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Layers, contentDescription = null, tint = TrailColors.EmeraldBright, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text("离线地图", color = TrailColors.TextPrimary, fontWeight = FontWeight.SemiBold)
-                }
-                Text(
-                    "独立圈选区域、选择层级并管理离线瓦片包",
-                    color = TrailColors.TextMuted,
-                    fontSize = 11.sp,
-                )
-                Text(
-                    "$offlineMapCount 个离线区域 · 缓存 $cacheCount 张 · ${GeoUtils.formatBytes(cacheSizeBytes)}",
-                    color = TrailColors.EmeraldBright,
-                    fontSize = 10.sp,
-                )
-            }
-            Button(
+        SectionLabel("户外工具")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ToolEntryCard(
+                title = "经纬度换算",
+                description = "WGS84 / GCJ-02 / BD09",
+                icon = Icons.Filled.MyLocation,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenCoordinateConverter,
+            )
+            ToolEntryCard(
+                title = "配速换算",
+                description = "里程、时间与配速",
+                icon = Icons.Filled.Speed,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPaceCalculator,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ToolEntryCard(
+                title = "指南针",
+                description = "方向、方位与当前位置",
+                icon = Icons.Filled.Explore,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenCompassTool,
+            )
+            ToolEntryCard(
+                title = "离线地图",
+                description = "$offlineMapCount 个区域 · 缓存 $cacheCount 张",
+                status = GeoUtils.formatBytes(cacheSizeBytes),
+                icon = Icons.Filled.Layers,
+                modifier = Modifier.weight(1f),
                 onClick = onOpenOfflineMaps,
-                colors = ButtonDefaults.buttonColors(containerColor = TrailColors.PanelElevated),
-            ) {
-                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = TrailColors.TextSecondary)
-            }
+            )
         }
 
         Column(
@@ -205,7 +214,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "Kotlin + Jetpack Compose，支持工作空间、等高线、GPX、轨迹和离线地图。",
+                "Kotlin + Jetpack Compose，支持工作空间、等高线、GPX、轨迹、户外工具和离线地图。",
                 color = TrailColors.TextMuted,
                 fontSize = 10.sp,
             )
@@ -217,6 +226,66 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.padding(bottom = 56.dp))
+    }
+}
+
+@Composable
+private fun ToolEntryCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    status: String? = null,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .height(112.dp)
+            .background(TrailColors.Panel.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
+            .border(1.dp, TrailColors.Border, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = TrailColors.EmeraldBright,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = "打开$title",
+                tint = TrailColors.TextMuted,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+        Spacer(Modifier.size(8.dp))
+        Text(
+            title,
+            color = TrailColors.TextPrimary,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+        )
+        Spacer(Modifier.size(2.dp))
+        Text(
+            description,
+            color = TrailColors.TextMuted,
+            fontSize = 9.sp,
+        )
+        status?.let {
+            Spacer(Modifier.weight(1f))
+            Text(
+                it,
+                color = TrailColors.EmeraldBright,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 

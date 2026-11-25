@@ -92,6 +92,9 @@ import com.trailguardian.feature.map.TrailMapController
 import com.trailguardian.feature.offline.OfflineEntryRequest
 import com.trailguardian.feature.offline.OfflineMapScreen
 import com.trailguardian.feature.settings.SettingsScreen
+import com.trailguardian.feature.tools.CompassToolScreen
+import com.trailguardian.feature.tools.CoordinateConverterScreen
+import com.trailguardian.feature.tools.PaceCalculatorScreen
 import com.trailguardian.feature.workspace.WorkspaceScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -106,6 +109,13 @@ private enum class Tab(val title: String) {
     HISTORY("历史轨迹"),
     SETTINGS("设置"),
     OFFLINE("离线地图"),
+    TOOL("户外工具"),
+}
+
+private enum class ToolPage {
+    COORDINATE,
+    PACE,
+    COMPASS,
 }
 
 private fun hasForegroundLocation(context: android.content.Context): Boolean =
@@ -169,11 +179,13 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
 
     var currentTab by rememberSaveable { mutableStateOf(Tab.MAP) }
     var offlineReturnTab by rememberSaveable { mutableStateOf(Tab.SETTINGS) }
+    var activeTool by rememberSaveable { mutableStateOf(ToolPage.COORDINATE) }
     var offlineRequest by remember { mutableStateOf<OfflineEntryRequest?>(null) }
     var workspaceCreateOpen by remember { mutableStateOf(false) }
     var poiAnchor by remember { mutableStateOf<GeoPoint?>(null) }
     var pendingPoiFocus by remember { mutableStateOf<Poi?>(null) }
     var mapController by remember { mutableStateOf<TrailMapController?>(null) }
+    var pendingMapLocation by remember { mutableStateOf<GeoPoint?>(null) }
     var pendingExport by remember { mutableStateOf<GpxExport?>(null) }
 
     var foregroundGranted by remember { mutableStateOf(hasForegroundLocation(context)) }
@@ -329,8 +341,13 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
         }
     }
 
-    LaunchedEffect(currentTab, mapController, pendingPoiFocus) {
+    LaunchedEffect(currentTab, mapController, pendingPoiFocus, pendingMapLocation) {
         if (currentTab == Tab.MAP) {
+            val location = pendingMapLocation
+            if (location != null && mapController != null) {
+                mapController?.centerToPoint(location.lat, location.lng, 17.0)
+                pendingMapLocation = null
+            }
             val poi = pendingPoiFocus
             if (poi != null && mapController != null) {
                 mapController?.centerToPoint(poi.lat, poi.lng, 17.0)
@@ -389,12 +406,17 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
         currentTab = Tab.OFFLINE
     }
 
+    fun openTool(tool: ToolPage) {
+        activeTool = tool
+        currentTab = Tab.TOOL
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(TrailColors.Background),
     ) {
-        if (currentTab != Tab.OFFLINE) {
+        if (currentTab != Tab.OFFLINE && currentTab != Tab.TOOL) {
             AppHeader(
                 workspaceName = activeWorkspace?.name,
                 motionStateLabel = recording.motionState.label,
@@ -443,9 +465,21 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
                             },
                             onCameraChanged = viewModel::onCameraChanged,
                             onPoiSelected = {},
-                            onControllerReady = { controller -> mapController = controller },
+                            onControllerReady = { controller ->
+                                mapController = controller
+                                val location = pendingMapLocation
+                                if (controller != null && location != null) {
+                                    controller.centerToPoint(location.lat, location.lng, 17.0)
+                                    pendingMapLocation = null
+                                }
+                            },
                             onMapReady = {
                                 viewModel.onMapReady()
+                                val location = pendingMapLocation
+                                if (location != null && mapController != null) {
+                                    mapController?.centerToPoint(location.lat, location.lng, 17.0)
+                                    pendingMapLocation = null
+                                }
                                 val pending = pendingPoiFocus
                                 if (pending != null && mapController != null) {
                                     mapController?.centerToPoint(pending.lat, pending.lng, 17.0)
@@ -542,6 +576,9 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
                     cacheCount = cacheInfo.count,
                     cacheSizeBytes = cacheInfo.bytes,
                     versionName = BuildConfig.VERSION_NAME,
+                    onOpenCoordinateConverter = { openTool(ToolPage.COORDINATE) },
+                    onOpenPaceCalculator = { openTool(ToolPage.PACE) },
+                    onOpenCompassTool = { openTool(ToolPage.COMPASS) },
                     onOpenOfflineMaps = ::openOfflineList,
                     onRequestBackgroundLocation = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -581,6 +618,28 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
                         onClearAll = viewModel::clearOfflineRegions,
                     )
                 }
+
+                Tab.TOOL -> when (activeTool) {
+                    ToolPage.COORDINATE -> CoordinateConverterScreen(
+                        position = displayPosition,
+                        onBack = { currentTab = Tab.SETTINGS },
+                        onOpenMap = { lat, lng ->
+                            pendingMapLocation = GeoPoint(lat, lng)
+                            currentTab = Tab.MAP
+                        },
+                        onNotify = { message -> viewModel.showToast(message) },
+                    )
+
+                    ToolPage.PACE -> PaceCalculatorScreen(
+                        onBack = { currentTab = Tab.SETTINGS },
+                        onNotify = { message -> viewModel.showToast(message) },
+                    )
+
+                    ToolPage.COMPASS -> CompassToolScreen(
+                        position = displayPosition,
+                        onBack = { currentTab = Tab.SETTINGS },
+                    )
+                }
             }
 
             ToastHost(
@@ -591,7 +650,7 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
             )
         }
 
-        if (currentTab != Tab.OFFLINE) {
+        if (currentTab != Tab.OFFLINE && currentTab != Tab.TOOL) {
             BottomNav(
                 currentTab = currentTab,
                 onChange = { tab -> currentTab = tab },
