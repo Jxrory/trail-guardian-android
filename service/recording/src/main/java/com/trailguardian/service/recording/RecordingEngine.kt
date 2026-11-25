@@ -6,6 +6,7 @@ import android.location.Location
 import androidx.core.content.ContextCompat
 import com.trailguardian.core.data.repository.AppSettingsRepository
 import com.trailguardian.core.data.repository.SessionRepository
+import com.trailguardian.core.data.repository.WorkspaceRepository
 import com.trailguardian.core.model.ActiveSession
 import com.trailguardian.core.model.CompletedRecording
 import com.trailguardian.core.model.GeoPoint
@@ -53,6 +54,7 @@ class RecordingEngine(
     private val appContext: Context,
     private val sessionRepository: SessionRepository,
     private val settingsRepository: AppSettingsRepository,
+    private val workspaceRepository: WorkspaceRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val persistenceMutex = Mutex()
@@ -63,7 +65,18 @@ class RecordingEngine(
     private var lowPower = true
 
     @Volatile
+    private var routeDeviationAlertEnabled = true
+
+    @Volatile
+    private var targetRoute: List<GeoPoint> = emptyList()
+
+    @Volatile
     private var serviceActive = false
+
+    private var deviationSamples = 0
+    private var routeDeviationActive = false
+    private var lastDeviationAlertAt = 0L
+    private var lastRouteCheckAt = 0L
 
     private val _state = MutableStateFlow(RecordingState())
     val state: StateFlow<RecordingState> = _state.asStateFlow()
@@ -74,6 +87,17 @@ class RecordingEngine(
     init {
         scope.launch {
             settingsRepository.lowPower.collect { enabled -> lowPower = enabled }
+        }
+        scope.launch {
+            settingsRepository.watchdogAlertEnabled.collect { enabled ->
+                RecordingWatchdog.setEnabled(appContext, enabled)
+            }
+        }
+        scope.launch {
+            settingsRepository.routeDeviationAlertEnabled.collect { enabled ->
+                routeDeviationAlertEnabled = enabled
+                if (!enabled) synchronized(lock) { resetRouteDeviationLocked() }
+            }
         }
     }
 
@@ -99,12 +123,14 @@ class RecordingEngine(
             startedAt = now,
             elapsedSeconds = 0,
         )
+        synchronized(lock) { resetRouteDeviationLocked() }
         _state.value = initialState
         val session = buildSession(initialState, now)
         persistenceMutex.withLock {
             sessionRepository.clear()
             sessionRepository.save(session)
         }
+        loadTargetRoute(workspaceId)
         startTicker()
         startService()
     }
@@ -119,6 +145,7 @@ class RecordingEngine(
                 isPaused = true,
                 motionState = MotionState.STANDBY,
             )
+            resetRouteDeviationLocked()
             _state.value = next
             persist(next, sessionStart = next.startedAt ?: now, now = now)
         }
@@ -136,6 +163,7 @@ class RecordingEngine(
                 isPaused = false,
                 motionState = MotionState.MOVING,
             )
+            resetRouteDeviationLocked()
             _state.value = next
             persist(next, sessionStart = next.startedAt ?: now, now = now)
         }
@@ -178,6 +206,7 @@ class RecordingEngine(
 
     fun restore(session: ActiveSession, startService: Boolean = true) {
         synchronized(lock) {
+            resetRouteDeviationLocked()
             accumulatedPausedMs = session.accumulatedPausedMs
             pauseStartedAt = session.pauseStartedAt
             lastSampleTimestamp = session.lastSampleTimestamp
@@ -208,6 +237,8 @@ class RecordingEngine(
             )
         }
         startTicker()
+        loadTargetRoute(session.workspaceId)
+        RecordingWatchdog.setActive(appContext, true)
         if (startService) startService()
     }
 
@@ -216,6 +247,10 @@ class RecordingEngine(
         synchronized(lock) { resetForFinish() }
         persistenceMutex.withLock { sessionRepository.clear() }
         stopService()
+    }
+
+    fun refreshTargetRoute(workspaceId: String) {
+        loadTargetRoute(workspaceId)
     }
 
     fun handleLocation(location: Location) {
@@ -244,6 +279,7 @@ class RecordingEngine(
             )
             _state.value = withPosition
             if (!withPosition.isRecording || withPosition.isPaused) return
+            maybeAlertRouteDeviation(position, accuracy, now)
             if (accuracy != null && accuracy > 50f) return
 
             val minInterval = if (lowPower) 3000L else 1500L
@@ -310,6 +346,56 @@ class RecordingEngine(
                 _state.value = current.copy(motionState = MotionState.MOVING)
             }
         }
+    }
+
+    private fun loadTargetRoute(workspaceId: String) {
+        scope.launch {
+            val points = workspaceRepository.getWorkspace(workspaceId)
+                ?.targetTrack?.points.orEmpty()
+            val state = _state.value
+            if (state.isRecording && state.workspaceId == workspaceId) {
+                targetRoute = points
+            }
+        }
+    }
+
+    private fun maybeAlertRouteDeviation(
+        position: LivePosition,
+        accuracy: Float?,
+        now: Long,
+    ) {
+        val route = targetRoute
+        if (!routeDeviationAlertEnabled || route.size < 2) {
+            resetRouteDeviationLocked()
+            return
+        }
+        if (now - lastRouteCheckAt < ROUTE_CHECK_INTERVAL_MS) return
+        lastRouteCheckAt = now
+        if (accuracy != null && accuracy > ROUTE_MAX_ACCURACY_METERS) return
+        val distance = GeoUtils.distanceToPolylineMeters(
+            GeoPoint(position.lat, position.lng),
+            route,
+        ) ?: return
+        if (distance > ROUTE_DEVIATION_METERS) {
+            deviationSamples += 1
+            if (deviationSamples >= ROUTE_CONFIRM_SAMPLES &&
+                (!routeDeviationActive || now - lastDeviationAlertAt >= ROUTE_ALERT_COOLDOWN_MS)
+            ) {
+                routeDeviationActive = true
+                lastDeviationAlertAt = now
+                RecordingWatchdog.speak(appContext, "路径已偏移，请返回目标路线")
+            }
+        } else {
+            deviationSamples = 0
+            if (distance <= ROUTE_RECOVERY_METERS) routeDeviationActive = false
+        }
+    }
+
+    private fun resetRouteDeviationLocked() {
+        deviationSamples = 0
+        routeDeviationActive = false
+        lastDeviationAlertAt = 0L
+        lastRouteCheckAt = 0L
     }
 
     private fun addAcceptedPoint(
@@ -434,6 +520,8 @@ class RecordingEngine(
         stationaryCount = 0
         lastValidElevation = null
         lastAcceptedPoint = null
+        targetRoute = emptyList()
+        resetRouteDeviationLocked()
         _state.value = RecordingState(
             currentElevation = _state.value.currentElevation,
             currentPosition = _state.value.currentPosition,
@@ -442,12 +530,23 @@ class RecordingEngine(
     }
 
     private fun startService() {
+        RecordingWatchdog.setActive(appContext, true)
         val intent = Intent(appContext, RecordingService::class.java)
         ContextCompat.startForegroundService(appContext, intent)
     }
 
     private fun stopService() {
+        RecordingWatchdog.setActive(appContext, false)
         runCatching { appContext.stopService(Intent(appContext, RecordingService::class.java)) }
+    }
+
+    private companion object {
+        const val ROUTE_DEVIATION_METERS = 50.0
+        const val ROUTE_RECOVERY_METERS = 30.0
+        const val ROUTE_MAX_ACCURACY_METERS = 35f
+        const val ROUTE_CONFIRM_SAMPLES = 3
+        const val ROUTE_CHECK_INTERVAL_MS = 2_000L
+        const val ROUTE_ALERT_COOLDOWN_MS = 2 * 60 * 1000L
     }
 }
 

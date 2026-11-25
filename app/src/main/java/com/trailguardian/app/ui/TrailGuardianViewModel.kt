@@ -108,6 +108,10 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.72f)
     val lowPower: StateFlow<Boolean> = settings.lowPower
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val watchdogAlertEnabled: StateFlow<Boolean> = settings.watchdogAlertEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val routeDeviationAlertEnabled: StateFlow<Boolean> = settings.routeDeviationAlertEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
     val mapSourceId: StateFlow<String> = settings.mapSourceId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "esri-satellite")
 
@@ -334,6 +338,7 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
                     points = parsed.points,
                     waypoints = parsed.waypoints,
                 )
+                engine.refreshTargetRoute(workspace.id)
                 val parts = buildList {
                     if (parsed.points.isNotEmpty()) add("${parsed.points.size} 个目标路径点")
                     if (parsed.waypoints.isNotEmpty()) add("${parsed.waypoints.size} 个标注点")
@@ -405,6 +410,14 @@ class TrailGuardianViewModel(application: Application) : AndroidViewModel(applic
 
     fun setLowPower(enabled: Boolean) {
         viewModelScope.launch { settings.setLowPower(enabled) }
+    }
+
+    fun setWatchdogAlertEnabled(enabled: Boolean) {
+        viewModelScope.launch { settings.setWatchdogAlertEnabled(enabled) }
+    }
+
+    fun setRouteDeviationAlertEnabled(enabled: Boolean) {
+        viewModelScope.launch { settings.setRouteDeviationAlertEnabled(enabled) }
     }
 
     fun onMapFocusApplied(key: String) {

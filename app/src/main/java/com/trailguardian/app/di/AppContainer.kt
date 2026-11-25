@@ -26,5 +26,10 @@ class AppContainer(context: Context) {
     val workspaceRepository = WorkspaceRepository(database)
     val sessionRepository = SessionRepository(database)
     val offlineMapRepository = OfflineMapRepository(context, database, tileCache)
-    val recordingEngine = RecordingEngine(context, sessionRepository, settingsRepository)
+    val recordingEngine = RecordingEngine(
+        context,
+        sessionRepository,
+        settingsRepository,
+        workspaceRepository,
+    )
 }

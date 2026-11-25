@@ -25,6 +25,8 @@ class AppSettingsRepository(context: Context) {
         val contourEnabled = booleanPreferencesKey("trail_contour_enabled")
         val contourOpacity = floatPreferencesKey("trail_contour_opacity")
         val lowPower = booleanPreferencesKey("trail_low_power")
+        val watchdogAlert = booleanPreferencesKey("trail_watchdog_alert")
+        val routeDeviationAlert = booleanPreferencesKey("trail_route_deviation_alert")
         val activeWorkspaceId = stringPreferencesKey("trail_active_workspace_id")
     }
 
@@ -44,6 +46,14 @@ class AppSettingsRepository(context: Context) {
 
     val lowPower: Flow<Boolean> = preferences.map { it[Keys.lowPower] ?: true }
 
+    val watchdogAlertEnabled: Flow<Boolean> = preferences.map {
+        it[Keys.watchdogAlert] ?: true
+    }
+
+    val routeDeviationAlertEnabled: Flow<Boolean> = preferences.map {
+        it[Keys.routeDeviationAlert] ?: true
+    }
+
     val activeWorkspaceId: Flow<String?> = preferences.map { it[Keys.activeWorkspaceId] }
 
     suspend fun setMapSource(id: String) {
@@ -61,6 +71,14 @@ class AppSettingsRepository(context: Context) {
 
     suspend fun setLowPower(enabled: Boolean) {
         dataStore.edit { it[Keys.lowPower] = enabled }
+    }
+
+    suspend fun setWatchdogAlertEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.watchdogAlert] = enabled }
+    }
+
+    suspend fun setRouteDeviationAlertEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.routeDeviationAlert] = enabled }
     }
 
     suspend fun setActiveWorkspaceId(id: String?) {

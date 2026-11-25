@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.trailguardian.core.geo.GeoUtils
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -27,6 +29,8 @@ class RecordingService : Service() {
     private lateinit var engine: RecordingEngine
     private var locationSource: LocationSource? = null
     private var observeJob: Job? = null
+    private var heartbeatJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -39,6 +43,14 @@ class RecordingService : Service() {
         engine.setServiceActive(true)
         createChannel()
         startForegroundNotification(engine.state.value)
+        acquireWakeLock()
+        heartbeatJob = scope.launch {
+            while (true) {
+                RecordingWatchdog.heartbeat(this@RecordingService)
+                acquireWakeLock()
+                delay(20_000L)
+            }
+        }
         observeJob = scope.launch {
             if (!engine.state.value.isRecording) {
                 val session = engine.loadActiveSession()
@@ -68,17 +80,52 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        val recordingActive = ::engine.isInitialized && engine.state.value.isRecording
         observeJob?.cancel()
+        heartbeatJob?.cancel()
         locationSource?.stop()
         locationSource = null
         if (::engine.isInitialized) {
             engine.setServiceActive(false)
         }
+        if (recordingActive) {
+            val alerted = RecordingWatchdog.alert(this, restarted = false)
+            if (alerted) {
+                RecordingWatchdog.speak(this, "轨迹记录服务已中断，请打开应用重新开始记录")
+            }
+            RecordingWatchdog.schedule(this)
+        }
+        releaseWakeLock()
         scope.cancel()
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (::engine.isInitialized && engine.state.value.isRecording) {
+            RecordingWatchdog.schedule(this)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun acquireWakeLock() {
+        val lock = wakeLock ?: getSystemService(PowerManager::class.java)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TrailGuardian:recording")
+            ?.apply { setReferenceCounted(false) }
+            ?.also { wakeLock = it }
+            ?: return
+        if (!lock.isHeld) {
+            runCatching { lock.acquire(WAKE_LOCK_TIMEOUT_MS) }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { lock ->
+            runCatching { if (lock.isHeld) lock.release() }
+        }
+        wakeLock = null
+    }
 
     private fun startLocation() {
         if (locationSource != null) return
@@ -163,5 +210,6 @@ class RecordingService : Service() {
     companion object {
         const val CHANNEL_ID = "trail_recording"
         const val NOTIFICATION_ID = 1101
+        private const val WAKE_LOCK_TIMEOUT_MS = 30 * 60 * 1000L
     }
 }

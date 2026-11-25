@@ -47,6 +47,10 @@ import com.trailguardian.core.ui.TrailColors
 fun SettingsScreen(
     lowPowerEnabled: Boolean,
     onLowPowerChange: (Boolean) -> Unit,
+    watchdogAlertEnabled: Boolean,
+    onWatchdogAlertChange: (Boolean) -> Unit,
+    routeDeviationAlertEnabled: Boolean,
+    onRouteDeviationAlertChange: (Boolean) -> Unit,
     serviceRunning: Boolean,
     backgroundLocationGranted: Boolean,
     batteryOptimizationRestricted: Boolean,
@@ -127,6 +131,20 @@ fun SettingsScreen(
             description = "扎营休息时降低采样频率，延长续航",
             checked = lowPowerEnabled,
             onCheckedChange = onLowPowerChange,
+        )
+
+        ToggleCard(
+            title = "记录中断提醒",
+            description = "定位服务被系统挂起或退出时，震动并语音提醒",
+            checked = watchdogAlertEnabled,
+            onCheckedChange = onWatchdogAlertChange,
+        )
+
+        ToggleCard(
+            title = "路线偏移提醒",
+            description = "记录轨迹时，偏离目标路线超过 50 米会语音提醒",
+            checked = routeDeviationAlertEnabled,
+            onCheckedChange = onRouteDeviationAlertChange,
         )
 
         if (!backgroundLocationGranted || batteryOptimizationRestricted) {

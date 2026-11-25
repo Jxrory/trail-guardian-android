@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,15 +33,10 @@ import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -171,6 +167,8 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
     val workspaceOfflineMap by viewModel.workspaceOfflineMap.collectAsState()
     val battery by viewModel.battery.collectAsState()
     val lowPower by viewModel.lowPower.collectAsState()
+    val watchdogAlertEnabled by viewModel.watchdogAlertEnabled.collectAsState()
+    val routeDeviationAlertEnabled by viewModel.routeDeviationAlertEnabled.collectAsState()
     val toasts by viewModel.toasts.collectAsState()
     val pendingRestore by viewModel.pendingRestore.collectAsState()
     val exportRequest by viewModel.exportRequest.collectAsState()
@@ -432,9 +430,9 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (currentTab) {
                 Tab.MAP -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         MapScreen(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            modifier = Modifier.fillMaxSize(),
                             tileBaseUrl = LocalTileServer.baseUrl(),
                             targetPoints = targetPoints,
                             recordedPoints = recordedPoints,
@@ -487,13 +485,17 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
                                 }
                             },
                         )
-                        MapActionBar(
+                        MapRecordingPanel(
                             workspace = activeWorkspace,
                             recording = recording,
+                            currentElevation = displayElevation,
+                            gpsState = displayGpsState,
                             onStart = ::tryStartRecording,
                             onPause = viewModel::togglePause,
                             onFinish = viewModel::finishRecording,
                             onOpenHistory = { currentTab = Tab.HISTORY },
+                            maxAvailableHeight = maxHeight,
+                            modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
                 }
@@ -569,6 +571,10 @@ fun AppRoot(viewModel: TrailGuardianViewModel) {
                 Tab.SETTINGS -> SettingsScreen(
                     lowPowerEnabled = lowPower,
                     onLowPowerChange = viewModel::setLowPower,
+                    watchdogAlertEnabled = watchdogAlertEnabled,
+                    onWatchdogAlertChange = viewModel::setWatchdogAlertEnabled,
+                    routeDeviationAlertEnabled = routeDeviationAlertEnabled,
+                    onRouteDeviationAlertChange = viewModel::setRouteDeviationAlertEnabled,
                     serviceRunning = serviceRunning,
                     backgroundLocationGranted = backgroundGranted,
                     batteryOptimizationRestricted = batteryRestricted,
@@ -875,103 +881,6 @@ private fun BottomNav(currentTab: Tab, onChange: (Tab) -> Unit) {
                     color = if (tab == currentTab) TrailColors.EmeraldBright else TrailColors.TextMuted,
                     fontSize = 10.sp,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MapActionBar(
-    workspace: Workspace?,
-    recording: com.trailguardian.service.recording.RecordingState,
-    onStart: () -> Unit,
-    onPause: () -> Unit,
-    onFinish: () -> Unit,
-    onOpenHistory: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(TrailColors.Panel)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        if (workspace == null) {
-            Button(
-                onClick = onOpenHistory,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF78350F).copy(alpha = 0.5f)),
-            ) {
-                Text("未加载工作空间 · 选择或新建轨迹", color = TrailColors.Amber, fontSize = 12.sp)
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    workspace.name,
-                    color = TrailColors.EmeraldBright,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    if (recording.isRecording) {
-                        String.format(Locale.US, "%.2f", recording.distanceMeters / 1000.0) +
-                            " km · ${GeoUtils.formatDuration(recording.elapsedSeconds)}"
-                    } else {
-                        "等待开始记录"
-                    },
-                    color = TrailColors.TextMuted,
-                    fontSize = 10.sp,
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onStart,
-                    enabled = !recording.isRecording,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = TrailColors.Emerald,
-                        disabledContainerColor = TrailColors.PanelElevated,
-                    ),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.size(3.dp))
-                    Text("开始", fontSize = 11.sp)
-                }
-                Button(
-                    onClick = onPause,
-                    enabled = recording.isRecording,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (recording.isPaused) TrailColors.Emerald else TrailColors.Amber,
-                        disabledContainerColor = TrailColors.PanelElevated,
-                    ),
-                ) {
-                    Icon(
-                        if (recording.isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.size(3.dp))
-                    Text(if (recording.isPaused) "继续" else "暂停", fontSize = 11.sp)
-                }
-                Button(
-                    onClick = onFinish,
-                    enabled = recording.isRecording,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = TrailColors.Rose,
-                        disabledContainerColor = TrailColors.PanelElevated,
-                    ),
-                ) {
-                    Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.size(3.dp))
-                    Text("结束", fontSize = 11.sp)
-                }
             }
         }
     }
